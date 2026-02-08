@@ -1,14 +1,17 @@
 """
-Evaluation Framework for Predictive Associative Memory — PyTorch Compatible
+Evaluation Framework for Predictive Associative Memory -- PyTorch Compatible
 
-Works with PyTorch models but keeps test data as NumPy for compatibility.
+Primary evaluation: faithfulness metrics (train on ALL associations, measure
+how faithfully the predictor recalls experienced associations).
+
+Secondary evaluation: generalisation stress test (70/30 edge-disjoint split).
 """
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
 from world import SyntheticWorld
@@ -31,7 +34,7 @@ def recall_at_k(scores: np.ndarray, gt_indices: set, k: int) -> float:
     if not gt_indices:
         return 0.0
     top_k = set(np.argsort(scores)[::-1][:k])
-    return len(top_k & gt_indices) / min(len(gt_indices), k)
+    return len(top_k & gt_indices) / len(gt_indices)
 
 
 def mrr(scores: np.ndarray, gt_indices: set) -> float:
@@ -43,12 +46,61 @@ def mrr(scores: np.ndarray, gt_indices: set) -> float:
     return 0.0
 
 
+def association_precision_at_k(scores: np.ndarray, true_associates: set, k: int) -> float:
+    """Of top-k retrieved, what fraction are true temporal associates?"""
+    if not true_associates:
+        return 0.0
+    top_k = set(np.argsort(scores)[::-1][:k])
+    return len(top_k & true_associates) / k
+
+
+def discrimination_auc_single(scores: np.ndarray, true_associates: set,
+                               query_idx: int) -> float:
+    """ROC-AUC for separating true associates from non-associates for one query."""
+    n = len(scores)
+    if not true_associates or len(true_associates) >= n - 1:
+        return 0.5
+    labels = np.zeros(n, dtype=np.float32)
+    for idx in true_associates:
+        labels[idx] = 1.0
+    labels[query_idx] = -1  # exclude self
+    mask = labels >= 0
+    y = labels[mask]
+    s = scores[mask]
+    if y.sum() == 0 or y.sum() == len(y):
+        return 0.5
+    # Wilcoxon-Mann-Whitney statistic (fast AUC)
+    pos_scores = s[y == 1]
+    neg_scores = s[y == 0]
+    # Sample negatives if too many (for speed)
+    if len(neg_scores) > 2000:
+        rng = np.random.RandomState(42)
+        neg_scores = rng.choice(neg_scores, 2000, replace=False)
+    n_pos = len(pos_scores)
+    n_neg = len(neg_scores)
+    if n_pos == 0 or n_neg == 0:
+        return 0.5
+    # Count how often a positive score > negative score
+    count = 0
+    for ps in pos_scores:
+        count += np.sum(ps > neg_scores) + 0.5 * np.sum(ps == neg_scores)
+    return float(count / (n_pos * n_neg))
+
+
 class BenchmarkEvaluator:
     def __init__(self, world: SyntheticWorld, predictor: AssociativePredictor,
-                 bilinear: LearnedBilinearBaseline):
+                 bilinear: LearnedBilinearBaseline,
+                 test_associations: Dict = None):
+        """
+        Args:
+            test_associations: If provided, T1/T2 evaluate only on these held-out
+                associations (edge-disjoint from training). If None, uses all
+                associations (legacy behavior, NOT recommended).
+        """
         self.world = world
         self.predictor = predictor
         self.bilinear = bilinear
+        self.test_associations = test_associations
 
         # Keep memory bank on GPU
         self.memory_bank = torch.from_numpy(world.all_embeddings).float().to(DEVICE)
@@ -94,7 +146,10 @@ class BenchmarkEvaluator:
         print("TEST 1: Association != Similarity")
         print("=" * 60)
 
-        associations = self.world._associations
+        # Use test-only associations if provided (avoids train/test leakage)
+        associations = self.test_associations if self.test_associations is not None else self.world._associations
+        split_label = "HELD-OUT test" if self.test_associations is not None else "ALL (no split)"
+        print(f"Evaluating on {len(associations)} {split_label} associations")
 
         # Build per-state association sets
         assoc_by_state = {}
@@ -226,6 +281,138 @@ class BenchmarkEvaluator:
         return TestResult('transitive_association', pred_score, cos_score, bil_score, details)
 
     # =========================================================================
+    # Test 2b: Transitive Association with Split-Aware Chain Construction
+    # =========================================================================
+    def test_transitive_split(self, train_associations: Dict, test_associations: Dict,
+                              k_values=[10, 20, 50], max_chains=500) -> Dict:
+        """
+        Build transitive chains with explicit edge provenance.
+
+        Returns results for two chain types:
+          - 'pure_test': A->B test edge, B->C test edge (fully held-out)
+          - 'train_to_test': A->B train edge, B->C test edge (chain generalization)
+
+        Both require A and C in different rooms (cross-room only).
+        """
+        print("\n" + "=" * 60)
+        print("TEST 2b: Transitive Association (Split-Aware Chains)")
+        print("=" * 60)
+
+        # Build adjacency from each split (all associations, no strength filter)
+        def build_adj(assoc):
+            adj = {}
+            for (i, j), s in assoc.items():
+                adj.setdefault(i, set()).add(j)
+                adj.setdefault(j, set()).add(i)
+            return adj
+
+        train_adj = build_adj(train_associations)
+        test_adj = build_adj(test_associations)
+        all_assoc = {**train_associations, **test_associations}
+
+        print(f"Train adj nodes: {len(train_adj)}, Test adj nodes: {len(test_adj)}")
+
+        rng = np.random.RandomState(123)
+        states = self.world.all_states
+
+        # Build chains: iterate over B nodes
+        pure_test_chains = []
+        train_to_test_chains = []
+
+        all_nodes = list(set(list(train_adj.keys()) + list(test_adj.keys())))
+        rng.shuffle(all_nodes)
+
+        for b in all_nodes:
+            if len(pure_test_chains) >= max_chains and len(train_to_test_chains) >= max_chains:
+                break
+
+            b_test_neighbors = test_adj.get(b, set())
+            b_train_neighbors = train_adj.get(b, set())
+
+            # Pure test: A and C both from test neighbors, in different rooms
+            if len(pure_test_chains) < max_chains and len(b_test_neighbors) >= 2:
+                by_room = {}
+                for n in b_test_neighbors:
+                    by_room.setdefault(states[n].room_id, []).append(n)
+                room_ids = list(by_room.keys())
+                if len(room_ids) >= 2:
+                    for ri in range(len(room_ids)):
+                        for rj in range(ri + 1, len(room_ids)):
+                            a = rng.choice(by_room[room_ids[ri]])
+                            c = rng.choice(by_room[room_ids[rj]])
+                            key_ac = (min(a, c), max(a, c))
+                            if key_ac not in all_assoc:
+                                pure_test_chains.append((a, b, c))
+                            if len(pure_test_chains) >= max_chains:
+                                break
+                        if len(pure_test_chains) >= max_chains:
+                            break
+
+            # Train->test: A from train neighbors, C from test neighbors, different rooms
+            if len(train_to_test_chains) < max_chains and b_train_neighbors and b_test_neighbors:
+                train_by_room = {}
+                for n in b_train_neighbors:
+                    train_by_room.setdefault(states[n].room_id, []).append(n)
+                test_by_room = {}
+                for n in b_test_neighbors:
+                    test_by_room.setdefault(states[n].room_id, []).append(n)
+
+                for tr_room, a_pool in train_by_room.items():
+                    for te_room, c_pool in test_by_room.items():
+                        if tr_room != te_room:
+                            a = rng.choice(a_pool)
+                            c = rng.choice(c_pool)
+                            key_ac = (min(a, c), max(a, c))
+                            if key_ac not in all_assoc:
+                                train_to_test_chains.append((a, b, c))
+                        if len(train_to_test_chains) >= max_chains:
+                            break
+                    if len(train_to_test_chains) >= max_chains:
+                        break
+
+        print(f"Pure test chains (A->B test, B->C test): {len(pure_test_chains)}")
+        print(f"Train->test chains (A->B train, B->C test): {len(train_to_test_chains)}")
+
+        all_results = {}
+        for label, chains in [('pure_test', pure_test_chains),
+                               ('train_to_test', train_to_test_chains)]:
+            n_test = min(len(chains), 200)
+            if n_test == 0:
+                print(f"\n  {label}: no chains found, skipping")
+                continue
+            print(f"\nTesting {n_test} {label} cross-room chains...")
+
+            results = {k: {m: [] for m in ['pred_1hop', 'pred_2hop', 'pred_3hop', 'cosine', 'bilinear']}
+                       for k in k_values}
+
+            for a, b, c in chains[:n_test]:
+                gt = {c}
+                p1 = self._pred_scores(a)
+                p2 = self._pred_multihop(a, hops=2)
+                p3 = self._pred_multihop(a, hops=3)
+                cs = self._cos_scores(a)
+                bs = self._bil_scores(a)
+
+                for k in k_values:
+                    results[k]['pred_1hop'].append(recall_at_k(p1, gt, k))
+                    results[k]['pred_2hop'].append(recall_at_k(p2, gt, k))
+                    results[k]['pred_3hop'].append(recall_at_k(p3, gt, k))
+                    results[k]['cosine'].append(recall_at_k(cs, gt, k))
+                    results[k]['bilinear'].append(recall_at_k(bs, gt, k))
+
+            all_results[label] = {k: {m: float(np.mean(results[k][m])) for m in results[k]}
+                                  for k in k_values}
+
+            print(f"  Results ({label}):")
+            for k in k_values:
+                print(f"  R@{k}:", end="")
+                for m in ['pred_1hop', 'pred_2hop', 'pred_3hop', 'cosine', 'bilinear']:
+                    print(f"  {m}={all_results[label][k][m]:.3f}", end="")
+                print()
+
+        return all_results
+
+    # =========================================================================
     # Test 3: Decay Ablation
     # =========================================================================
     def test_decay_ablation(self, num_steps=500, queries_per_checkpoint=10,
@@ -234,7 +421,7 @@ class BenchmarkEvaluator:
         print("TEST 3: Decay Ablation (Context-Relevant Queries)")
         print("=" * 60)
 
-        associations = self.world._associations
+        associations = self.test_associations if self.test_associations is not None else self.world._associations
         N = len(self.world.all_states)
 
         assoc_by_state = {}
@@ -602,8 +789,299 @@ class BenchmarkEvaluator:
                          float(predictor_score), 0.0, 0.0, details)
 
     # =========================================================================
+    # PRIMARY METRICS: Faithfulness evaluation (train on ALL associations)
+    # =========================================================================
+
+    def faithfulness_association_precision(self, k_values=[5, 10, 20, 50],
+                                           n_queries=500) -> Dict:
+        """
+        Association Precision@k: of top-k retrieved, what fraction are true
+        temporal associates? Evaluated on ALL associations (no holdout).
+        """
+        print("\n" + "=" * 60)
+        print("FAITHFULNESS: Association Precision@k")
+        print("=" * 60)
+
+        associations = self.world._associations
+        assoc_by_state = {}
+        for (i, j), s in associations.items():
+            assoc_by_state.setdefault(i, set()).add(j)
+            assoc_by_state.setdefault(j, set()).add(i)
+
+        # Sample queries that have associations
+        candidates = [idx for idx, nbrs in assoc_by_state.items() if len(nbrs) >= 3]
+        rng = np.random.RandomState(42)
+        rng.shuffle(candidates)
+        test_queries = candidates[:n_queries]
+
+        results = {k: {'predictor': [], 'cosine': []} for k in k_values}
+
+        for qi in test_queries:
+            true_assoc = assoc_by_state[qi]
+            pred_scores = self._pred_scores(qi)
+            cos_scores = self._cos_scores(qi)
+
+            for k in k_values:
+                results[k]['predictor'].append(
+                    association_precision_at_k(pred_scores, true_assoc, k))
+                results[k]['cosine'].append(
+                    association_precision_at_k(cos_scores, true_assoc, k))
+
+        print(f"Evaluated {len(test_queries)} queries")
+        print(f"\nAssociation Precision@k:")
+        details = {}
+        for k in k_values:
+            p_pred = float(np.mean(results[k]['predictor']))
+            p_cos = float(np.mean(results[k]['cosine']))
+            print(f"  AP@{k}: Pred={p_pred:.4f}  Cos={p_cos:.4f}")
+            details[k] = {'predictor': p_pred, 'cosine': p_cos}
+
+        return details
+
+    def faithfulness_cross_boundary_recall(self, k_values=[5, 10, 20, 50],
+                                            n_queries=500) -> Dict:
+        """
+        Cross-Boundary Recall@k: recall restricted to associations that cross
+        room boundaries. This is the headline differentiator -- cosine = 0 here.
+        """
+        print("\n" + "=" * 60)
+        print("FAITHFULNESS: Cross-Boundary Recall@k")
+        print("=" * 60)
+
+        associations = self.world._associations
+        assoc_by_state = {}
+        for (i, j), s in associations.items():
+            assoc_by_state.setdefault(i, set()).add(j)
+            assoc_by_state.setdefault(j, set()).add(i)
+
+        # Build cross-boundary queries
+        cross_room_queries = []
+        for idx, neighbors in assoc_by_state.items():
+            my_room = self.world.all_states[idx].room_id
+            cross_room = {n for n in neighbors
+                         if self.world.all_states[n].room_id != my_room}
+            if len(cross_room) >= 3:
+                cross_room_queries.append((idx, cross_room))
+
+        rng = np.random.RandomState(42)
+        rng.shuffle(cross_room_queries)
+        n_test = min(len(cross_room_queries), n_queries)
+        print(f"Testing {n_test} queries with cross-room associations...")
+
+        results = {k: {'predictor': [], 'cosine': []} for k in k_values}
+        mrr_scores = {'predictor': [], 'cosine': []}
+
+        for idx, cross_room_gt in cross_room_queries[:n_test]:
+            pred_scores = self._pred_scores(idx)
+            cos_scores = self._cos_scores(idx)
+
+            for k in k_values:
+                results[k]['predictor'].append(recall_at_k(pred_scores, cross_room_gt, k))
+                results[k]['cosine'].append(recall_at_k(cos_scores, cross_room_gt, k))
+
+            mrr_scores['predictor'].append(mrr(pred_scores, cross_room_gt))
+            mrr_scores['cosine'].append(mrr(cos_scores, cross_room_gt))
+
+        details = {'recall_at_k': {}, 'mrr': {}}
+        print(f"\nCross-Boundary Recall@k:")
+        for k in k_values:
+            p_pred = float(np.mean(results[k]['predictor']))
+            p_cos = float(np.mean(results[k]['cosine']))
+            print(f"  CBR@{k}: Pred={p_pred:.4f}  Cos={p_cos:.4f}")
+            details['recall_at_k'][k] = {'predictor': p_pred, 'cosine': p_cos}
+
+        for m in ['predictor', 'cosine']:
+            details['mrr'][m] = float(np.mean(mrr_scores[m]))
+        print(f"  MRR: Pred={details['mrr']['predictor']:.4f}  Cos={details['mrr']['cosine']:.4f}")
+
+        return details
+
+    def faithfulness_discrimination_auc(self, n_queries=300) -> Dict:
+        """
+        Discrimination AUC: ROC-AUC for separating true associates from
+        non-associates across the full memory store.
+        """
+        print("\n" + "=" * 60)
+        print("FAITHFULNESS: Discrimination AUC")
+        print("=" * 60)
+
+        associations = self.world._associations
+        assoc_by_state = {}
+        for (i, j), s in associations.items():
+            assoc_by_state.setdefault(i, set()).add(j)
+            assoc_by_state.setdefault(j, set()).add(i)
+
+        candidates = [idx for idx, nbrs in assoc_by_state.items() if len(nbrs) >= 5]
+        rng = np.random.RandomState(42)
+        rng.shuffle(candidates)
+        test_queries = candidates[:n_queries]
+
+        pred_aucs = []
+        cos_aucs = []
+
+        for qi in test_queries:
+            true_assoc = assoc_by_state[qi]
+            pred_scores = self._pred_scores(qi)
+            cos_scores = self._cos_scores(qi)
+
+            pred_aucs.append(discrimination_auc_single(pred_scores, true_assoc, qi))
+            cos_aucs.append(discrimination_auc_single(cos_scores, true_assoc, qi))
+
+        mean_pred = float(np.mean(pred_aucs))
+        mean_cos = float(np.mean(cos_aucs))
+
+        print(f"Evaluated {len(test_queries)} queries")
+        print(f"  Predictor AUC: {mean_pred:.4f}")
+        print(f"  Cosine AUC:    {mean_cos:.4f}")
+
+        # Also compute cross-room-only AUC
+        cross_pred_aucs = []
+        cross_cos_aucs = []
+        for qi in test_queries:
+            my_room = self.world.all_states[qi].room_id
+            cross_assoc = {n for n in assoc_by_state[qi]
+                          if self.world.all_states[n].room_id != my_room}
+            if len(cross_assoc) >= 3:
+                cross_pred_aucs.append(
+                    discrimination_auc_single(self._pred_scores(qi), cross_assoc, qi))
+                cross_cos_aucs.append(
+                    discrimination_auc_single(self._cos_scores(qi), cross_assoc, qi))
+
+        mean_cross_pred = float(np.mean(cross_pred_aucs)) if cross_pred_aucs else 0.0
+        mean_cross_cos = float(np.mean(cross_cos_aucs)) if cross_cos_aucs else 0.0
+        print(f"  Cross-room Predictor AUC: {mean_cross_pred:.4f}")
+        print(f"  Cross-room Cosine AUC:    {mean_cross_cos:.4f}")
+
+        return {
+            'all': {'predictor': mean_pred, 'cosine': mean_cos},
+            'cross_room': {'predictor': mean_cross_pred, 'cosine': mean_cross_cos},
+            'n_queries': len(test_queries),
+            'n_cross_room_queries': len(cross_pred_aucs),
+        }
+
+    def faithfulness_specificity(self, k=20, n_queries=300) -> Dict:
+        """
+        Specificity: does the predictor retrieve the *specific* associated item
+        or the whole category? Measures whether top-k hits cluster in the same
+        room as the true associate or spread across the whole room.
+
+        For each cross-room query:
+          - Get the specific target room(s) of true associates
+          - Check how many of the top-k are in those target rooms but NOT true associates
+          - High specificity = few false positives from the target room
+        """
+        print("\n" + "=" * 60)
+        print("FAITHFULNESS: Specificity (target vs category)")
+        print("=" * 60)
+
+        associations = self.world._associations
+        assoc_by_state = {}
+        for (i, j), s in associations.items():
+            assoc_by_state.setdefault(i, set()).add(j)
+            assoc_by_state.setdefault(j, set()).add(i)
+
+        # Group states by room
+        room_states = {}
+        for s in self.world.all_states:
+            room_states.setdefault(s.room_id, set()).add(s.global_index)
+
+        # Queries with cross-room associations
+        cross_queries = []
+        for idx, neighbors in assoc_by_state.items():
+            my_room = self.world.all_states[idx].room_id
+            cross = {n for n in neighbors if self.world.all_states[n].room_id != my_room}
+            if len(cross) >= 3:
+                cross_queries.append((idx, cross))
+
+        rng = np.random.RandomState(42)
+        rng.shuffle(cross_queries)
+        n_test = min(len(cross_queries), n_queries)
+
+        pred_specificity = []
+        cos_specificity = []
+
+        for idx, cross_assoc in cross_queries[:n_test]:
+            # Target rooms = rooms containing true cross-room associates
+            target_rooms = {self.world.all_states[n].room_id for n in cross_assoc}
+            # All states in target rooms
+            target_room_states = set()
+            for rid in target_rooms:
+                target_room_states |= room_states[rid]
+            # Category distractors = states in target rooms that are NOT true associates
+            category_distractors = target_room_states - cross_assoc - {idx}
+
+            pred_scores = self._pred_scores(idx)
+            cos_scores = self._cos_scores(idx)
+
+            top_k_pred = set(np.argsort(pred_scores)[::-1][:k])
+            top_k_cos = set(np.argsort(cos_scores)[::-1][:k])
+
+            # Specificity = true associates in top-k / (true associates + category distractors in top-k)
+            pred_true_hits = len(top_k_pred & cross_assoc)
+            pred_distractor_hits = len(top_k_pred & category_distractors)
+            if pred_true_hits + pred_distractor_hits > 0:
+                pred_specificity.append(pred_true_hits / (pred_true_hits + pred_distractor_hits))
+
+            cos_true_hits = len(top_k_cos & cross_assoc)
+            cos_distractor_hits = len(top_k_cos & category_distractors)
+            if cos_true_hits + cos_distractor_hits > 0:
+                cos_specificity.append(cos_true_hits / (cos_true_hits + cos_distractor_hits))
+
+        mean_pred = float(np.mean(pred_specificity)) if pred_specificity else 0.0
+        mean_cos = float(np.mean(cos_specificity)) if cos_specificity else 0.0
+
+        print(f"Evaluated {n_test} cross-room queries")
+        print(f"  Predictor specificity: {mean_pred:.4f}")
+        print(f"  Cosine specificity:    {mean_cos:.4f}")
+        print(f"  (1.0 = retrieves only specific associates, 0.0 = retrieves whole category)")
+
+        return {
+            'predictor': mean_pred,
+            'cosine': mean_cos,
+            'n_queries': n_test,
+            'k': k,
+        }
+
+    def run_faithfulness(self) -> Dict:
+        """Run all four faithfulness metrics. Returns combined results dict."""
+        print("\n" + "#" * 60)
+        print("PRIMARY EVALUATION: Faithfulness Metrics")
+        print("(Trained on ALL associations -- no holdout)")
+        print("#" * 60)
+
+        t0 = time.time()
+        results = {}
+        results['association_precision'] = self.faithfulness_association_precision()
+        results['cross_boundary_recall'] = self.faithfulness_cross_boundary_recall()
+        results['discrimination_auc'] = self.faithfulness_discrimination_auc()
+        results['specificity'] = self.faithfulness_specificity()
+
+        elapsed = time.time() - t0
+        print(f"\n{'=' * 60}")
+        print("FAITHFULNESS SUMMARY")
+        print(f"{'=' * 60}")
+        ap20 = results['association_precision'][20]['predictor']
+        cbr20 = results['cross_boundary_recall']['recall_at_k'][20]['predictor']
+        cbr20_cos = results['cross_boundary_recall']['recall_at_k'][20]['cosine']
+        cb_mrr = results['cross_boundary_recall']['mrr']['predictor']
+        auc_all = results['discrimination_auc']['all']['predictor']
+        auc_cross = results['discrimination_auc']['cross_room']['predictor']
+        spec = results['specificity']['predictor']
+
+        print(f"  Association Precision@20:    {ap20:.4f}")
+        print(f"  Cross-Boundary Recall@20:    {cbr20:.4f}  (cosine: {cbr20_cos:.4f})")
+        print(f"  Cross-Boundary MRR:          {cb_mrr:.4f}")
+        print(f"  Discrimination AUC (all):    {auc_all:.4f}")
+        print(f"  Discrimination AUC (x-room): {auc_cross:.4f}")
+        print(f"  Specificity@20:              {spec:.4f}")
+        print(f"  Time: {elapsed:.1f}s")
+
+        results['time'] = elapsed
+        return results
+
+    # =========================================================================
     def run_all(self) -> List[TestResult]:
-        """Run all 5 tests."""
+        """Run all 5 tests (legacy)."""
         t0 = time.time()
 
         results = [

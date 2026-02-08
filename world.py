@@ -391,6 +391,31 @@ class SyntheticWorld:
             raise ValueError("Compute ground truth first")
         key = (min(idx_i, idx_j), max(idx_i, idx_j))
         return self._associations.get(key, 0.0)
+
+    def split_associations(self, train_ratio: float = 0.7, seed: int = 42) -> Tuple[Dict, Dict]:
+        """
+        Split associations into edge-disjoint train and test sets.
+
+        Returns:
+            (train_associations, test_associations) -- both dicts of (i,j)->strength
+        """
+        if self._associations is None:
+            raise ValueError("Compute ground truth first")
+
+        rng = np.random.RandomState(seed)
+        keys = list(self._associations.keys())
+        rng.shuffle(keys)
+
+        split_idx = int(len(keys) * train_ratio)
+        train_keys = set(keys[:split_idx])
+
+        train_assoc = {k: self._associations[k] for k in keys[:split_idx]}
+        test_assoc = {k: self._associations[k] for k in keys[split_idx:]}
+
+        print(f"Association split: {len(train_assoc)} train ({100*train_ratio:.0f}%), "
+              f"{len(test_assoc)} test ({100*(1-train_ratio):.0f}%)")
+
+        return train_assoc, test_assoc
     
     def build_test_sets(self) -> Dict[str, List[Tuple]]:
         """
@@ -533,16 +558,23 @@ class SyntheticWorld:
         
         return test_sets
     
-    def get_training_pairs(self, num_negatives: int = 15, max_pairs: int = 100000) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_training_pairs(self, num_negatives: int = 15, max_pairs: int = 100000,
+                           associations: Dict = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Generate training data: (anchor, positive, negatives) triplets.
 
         Uses hard negative mining: half the negatives come from the same room
         as the positive (hard negatives that are similar but not associated),
         the other half are random (easy negatives from different rooms).
+
+        Args:
+            associations: If provided, use only these associations (e.g. train split).
+                          If None, uses all associations (legacy behavior).
         """
         if self._associations is None:
             self.compute_association_ground_truth()
+
+        source_assoc = associations if associations is not None else self._associations
 
         # Build room-to-state index for hard negative sampling
         room_to_states = {}
@@ -553,11 +585,11 @@ class SyntheticWorld:
 
         # Build per-state association set for fast lookup
         assoc_set = set()
-        for (i, j) in self._associations:
+        for (i, j) in source_assoc:
             assoc_set.add((i, j))
             assoc_set.add((j, i))
 
-        assoc_list = [(i, j, s) for (i, j), s in self._associations.items() if s >= 0.2]
+        assoc_list = [(i, j, s) for (i, j), s in source_assoc.items() if s >= 0.2]
         self.rng.shuffle(assoc_list)
 
         # Use both directions (i->j and j->i) to double effective data

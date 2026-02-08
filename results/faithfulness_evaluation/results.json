@@ -1,0 +1,198 @@
+{
+  "primary_faithfulness": {
+    "association_precision": {
+      "5": {
+        "predictor": 0.702,
+        "cosine": 0.08480000000000001
+      },
+      "10": {
+        "predictor": 0.4068,
+        "cosine": 0.0628
+      },
+      "20": {
+        "predictor": 0.2155,
+        "cosine": 0.0454
+      },
+      "50": {
+        "predictor": 0.09248000000000002,
+        "cosine": 0.027039999999999998
+      }
+    },
+    "cross_boundary_recall": {
+      "recall_at_k": {
+        "5": {
+          "predictor": 0.3301666666666666,
+          "cosine": 0.0
+        },
+        "10": {
+          "predictor": 0.3935698412698413,
+          "cosine": 0.0
+        },
+        "20": {
+          "predictor": 0.419447619047619,
+          "cosine": 0.0003333333333333333
+        },
+        "50": {
+          "predictor": 0.44147063492063493,
+          "cosine": 0.0003333333333333333
+        }
+      },
+      "mrr": {
+        "predictor": 0.6306102998953192,
+        "cosine": 0.0003215023073606758
+      }
+    },
+    "discrimination_auc": {
+      "all": {
+        "predictor": 0.9158232347883597,
+        "cosine": 0.789231707010582
+      },
+      "cross_room": {
+        "predictor": 0.8526029593042891,
+        "cosine": 0.5033465699932456
+      },
+      "n_queries": 300,
+      "n_cross_room_queries": 188
+    },
+    "specificity": {
+      "predictor": 0.33978700007804413,
+      "cosine": 0.0,
+      "n_queries": 300,
+      "k": 20
+    },
+    "time": 11.777314186096191,
+    "training": {
+      "loss": 0.4084969471635111,
+      "time": 353.14289021492004,
+      "pairs": 200000,
+      "parameters": 2362752
+    }
+  },
+  "ablation_temporal_shuffle": {
+    "association_precision": {
+      "5": {
+        "predictor": 0.05960000000000001,
+        "cosine": 0.08480000000000001
+      },
+      "10": {
+        "predictor": 0.0352,
+        "cosine": 0.0628
+      },
+      "20": {
+        "predictor": 0.0195,
+        "cosine": 0.0454
+      },
+      "50": {
+        "predictor": 0.00936,
+        "cosine": 0.027039999999999998
+      }
+    },
+    "cross_boundary_recall": {
+      "recall_at_k": {
+        "5": {
+          "predictor": 0.03297380952380952,
+          "cosine": 0.0
+        },
+        "10": {
+          "predictor": 0.03932301587301588,
+          "cosine": 0.0
+        },
+        "20": {
+          "predictor": 0.04415079365079364,
+          "cosine": 0.0003333333333333333
+        },
+        "50": {
+          "predictor": 0.04912777777777777,
+          "cosine": 0.0003333333333333333
+        }
+      },
+      "mrr": {
+        "predictor": 0.08961426009440783,
+        "cosine": 0.0003215023073606758
+      }
+    },
+    "discrimination_auc": {
+      "all": {
+        "predictor": 0.6122998121693122,
+        "cosine": 0.789231707010582
+      },
+      "cross_room": {
+        "predictor": 0.5691066204407295,
+        "cosine": 0.5033465699932456
+      },
+      "n_queries": 300,
+      "n_cross_room_queries": 188
+    },
+    "specificity": {
+      "predictor": 0.11468372491281809,
+      "cosine": 0.0,
+      "n_queries": 300,
+      "k": 20
+    },
+    "time": 347.40633893013,
+    "loss": 0.8539935499810807
+  },
+  "ablation_similarity_matched": {
+    "predictor_auc": 0.8479641068183504,
+    "cosine_auc": 0.7323389497562591,
+    "n_queries": 268
+  },
+  "secondary_generalisation_stress_test": {
+    "test": {
+      "T1_R@20": 0.022777777777777775,
+      "T1_MRR": 0.01365935289898121,
+      "T2_cross_room_R@20": 0.29,
+      "T1_cosine_R@20": 0.0,
+      "details": {
+        "recall_at_k": {
+          "5": {
+            "predictor": 0.003055555555555555,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "10": {
+            "predictor": 0.01,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "20": {
+            "predictor": 0.022777777777777775,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "50": {
+            "predictor": 0.04288888888888889,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          }
+        },
+        "mrr": {
+          "predictor": 0.01365935289898121,
+          "cosine": 0.00013514545179145918,
+          "bilinear": 0.00013177042777060412
+        }
+      }
+    },
+    "train": {
+      "T1_R@20": 0.5781402116402116,
+      "T1_MRR": 0.6783562349317228
+    },
+    "gap": {
+      "R@20": 0.5553624338624338,
+      "MRR": 0.6646968820327416
+    },
+    "loss": 0.40922868716747257,
+    "time": 337.7485489845276
+  },
+  "config": {
+    "architecture": "4-layer MLP (128->1024->1024->1024->128)",
+    "hidden_dim": 1024,
+    "epochs": 500,
+    "batch_size": 512,
+    "lr": "0.0005->1e-05",
+    "temp": "0.15->0.05",
+    "training_pairs": 200000,
+    "total_associations": 242500
+  },
+  "total_time": 1718.1035506725311
+}

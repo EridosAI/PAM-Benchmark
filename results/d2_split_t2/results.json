@@ -1,10 +1,9 @@
 {
   "split": "70/30 edge-disjoint",
-  "test": {
-    "T1_R@20": 0.025944444444444444,
-    "T1_MRR": 0.014896343212528746,
-    "T2_cross_room_R@20": 0.29,
-    "T1_details": {
+  "T1_test": {
+    "R@20": 0.025944444444444444,
+    "MRR": 0.014896343212528746,
+    "details": {
       "recall_at_k": {
         "5": {
           "predictor": 0.0038888888888888883,
@@ -32,60 +31,12 @@
         "cosine": 0.00013514545179145918,
         "bilinear": 0.00013637746723586008
       }
-    },
-    "T2_details": {
-      "cross_room": {
-        "10": {
-          "pred_1hop": 0.39,
-          "pred_2hop": 0.245,
-          "pred_3hop": 0.19,
-          "cosine": 0.0,
-          "bilinear": 0.0
-        },
-        "20": {
-          "pred_1hop": 0.415,
-          "pred_2hop": 0.29,
-          "pred_3hop": 0.235,
-          "cosine": 0.0,
-          "bilinear": 0.0
-        },
-        "50": {
-          "pred_1hop": 0.435,
-          "pred_2hop": 0.37,
-          "pred_3hop": 0.315,
-          "cosine": 0.0,
-          "bilinear": 0.0
-        }
-      },
-      "same_room": {
-        "10": {
-          "pred_1hop": 0.385,
-          "pred_2hop": 0.3,
-          "pred_3hop": 0.24,
-          "cosine": 0.105,
-          "bilinear": 0.01
-        },
-        "20": {
-          "pred_1hop": 0.43,
-          "pred_2hop": 0.34,
-          "pred_3hop": 0.285,
-          "cosine": 0.17,
-          "bilinear": 0.045
-        },
-        "50": {
-          "pred_1hop": 0.5,
-          "pred_2hop": 0.425,
-          "pred_3hop": 0.345,
-          "cosine": 0.275,
-          "bilinear": 0.11
-        }
-      }
     }
   },
-  "train": {
-    "T1_R@20": 0.537218253968254,
-    "T1_MRR": 0.6727979258113618,
-    "T1_details": {
+  "T1_train": {
+    "R@20": 0.537218253968254,
+    "MRR": 0.6727979258113618,
+    "details": {
       "recall_at_k": {
         "5": {
           "predictor": 0.447388888888889,
@@ -115,13 +66,56 @@
       }
     }
   },
-  "generalization_gap": {
-    "R@20": 0.5112738095238095,
-    "MRR": 0.657901582598833
+  "T2_split": {
+    "pure_test": {
+      "10": {
+        "pred_1hop": 0.0,
+        "pred_2hop": 0.0,
+        "pred_3hop": 0.0,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "20": {
+        "pred_1hop": 0.0,
+        "pred_2hop": 0.0,
+        "pred_3hop": 0.0,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "50": {
+        "pred_1hop": 0.0,
+        "pred_2hop": 0.0,
+        "pred_3hop": 0.005,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      }
+    },
+    "train_to_test": {
+      "10": {
+        "pred_1hop": 0.0,
+        "pred_2hop": 0.005,
+        "pred_3hop": 0.005,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "20": {
+        "pred_1hop": 0.01,
+        "pred_2hop": 0.01,
+        "pred_3hop": 0.005,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "50": {
+        "pred_1hop": 0.01,
+        "pred_2hop": 0.015,
+        "pred_3hop": 0.005,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      }
+    }
   },
   "loss": 0.406671560557602,
-  "time": 324.5879271030426,
-  "parameters": 2362752,
+  "time": 334.69905614852905,
   "train_associations": 169750,
   "test_associations": 72750
 }

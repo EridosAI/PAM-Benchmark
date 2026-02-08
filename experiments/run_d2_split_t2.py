@@ -1,15 +1,14 @@
 """
-Experiment D2: 4-layer + 200k fixed pairs (combining B and C).
+D2 re-run with split-aware T2 transitive test.
 
-v2: Fixed train/test leakage (70/30 edge-disjoint split) and R@K metric bug.
-Trains on 70% of associations, evaluates on held-out 30%.
-Reports both train-split and test-split metrics for comparison.
+Trains on 70% associations, evaluates:
+  - T1 on held-out 30% (same as before)
+  - T2 pure_test: A->B test, B->C test (fully held-out chains)
+  - T2 train_to_test: A->B train, B->C test (chain generalization)
 """
 
 import time
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 from pathlib import Path
 import json
@@ -35,17 +34,15 @@ os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from world import SyntheticWorld, WorldConfig
 from models_torch import (
-    AssociativePredictor, LearnedBilinearBaseline,
-    train_predictor, DEVICE
+    LearnedBilinearBaseline, train_predictor, DEVICE
 )
 from evaluate_torch import BenchmarkEvaluator
 
-# Import 4-layer architecture
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 from run_plateau_experiments import AssociativePredictor4Layer
 
 print("=" * 70)
-print("EXPERIMENT D2: 4-Layer + 200k Fixed Pairs (with train/test split)")
+print("D2 with Split-Aware T2 Transitive Test")
 print("=" * 70)
 t_start = time.time()
 
@@ -55,16 +52,15 @@ world = SyntheticWorld(config)
 world.generate_trajectories()
 world.compute_association_ground_truth()
 
-# --- CRITICAL FIX: Train/test split ---
+# Split
 train_assoc, test_assoc = world.split_associations(train_ratio=0.7, seed=SEED)
 
-# Generate training pairs from TRAIN split only
+# Train on train split only
 print("\nGenerating 200k training pairs from TRAIN split...")
 t0 = time.time()
 anchors, positives, _ = world.get_training_pairs(max_pairs=200000, associations=train_assoc)
-print(f"Time: {time.time()-t0:.1f}s")
+print(f"Pair generation: {time.time()-t0:.1f}s")
 
-# Train 4-layer predictor
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 
@@ -81,73 +77,70 @@ best_loss = train_predictor(
     epochs=EPOCHS, batch_size=BATCH_SIZE,
     lr_start=LR_START, lr_end=LR_END,
     temp_start=TEMP_START, temp_end=TEMP_END,
-    print_every=50
+    print_every=100
 )
 train_time = time.time() - t0
 print(f"Training: {train_time:.1f}s, Loss: {best_loss:.4f}")
 
-# Bilinear baseline (same training data)
 bilinear = LearnedBilinearBaseline(config.embedding_dim, seed=123)
 bilinear.train(anchors, positives, epochs=200, batch_size=BATCH_SIZE, lr=1e-3)
 
-# --- Evaluate on HELD-OUT test associations ---
+# --- T1 on held-out test ---
 print("\n" + "=" * 70)
-print("EVALUATION ON HELD-OUT TEST ASSOCIATIONS (30%)")
+print("T1: Held-out test associations")
 print("=" * 70)
 eval_test = BenchmarkEvaluator(world, pred, bilinear, test_associations=test_assoc)
 t1_test = eval_test.test_association_vs_similarity()
-t2_test = eval_test.test_transitive_association()
 
-# --- Also evaluate on train associations for comparison ---
+# --- T1 on train (for comparison) ---
 print("\n" + "=" * 70)
-print("EVALUATION ON TRAIN ASSOCIATIONS (70%) -- for comparison only")
+print("T1: Train associations (comparison)")
 print("=" * 70)
 eval_train = BenchmarkEvaluator(world, pred, bilinear, test_associations=train_assoc)
 t1_train = eval_train.test_association_vs_similarity()
 
-# Extract results
+# --- T2 split-aware ---
+print("\n" + "=" * 70)
+print("T2: Split-Aware Transitive Chains")
+print("=" * 70)
+t2_split = eval_test.test_transitive_split(train_assoc, test_assoc)
+
+# --- Summary ---
+print(f"\n{'=' * 70}")
+print("SUMMARY")
+print(f"{'=' * 70}")
+
 test_r20 = t1_test.predictor_score
 test_mrr = t1_test.details['mrr']['predictor']
-test_t2_cross = t2_test.predictor_score
 train_r20 = t1_train.predictor_score
 train_mrr = t1_train.details['mrr']['predictor']
 
-print(f"\n{'=' * 70}")
-print("EXPERIMENT D2 RESULTS (with train/test split)")
-print(f"{'=' * 70}")
-print(f"\nHeld-out test (30% associations):")
-print(f"  T1 R@20: {test_r20:.3f}")
-print(f"  T1 MRR:  {test_mrr:.3f}")
-print(f"  T2 XRoom R@20: {test_t2_cross:.3f}")
-print(f"\nTrain split (70% associations):")
-print(f"  T1 R@20: {train_r20:.3f}")
-print(f"  T1 MRR:  {train_mrr:.3f}")
-print(f"\nGeneralization gap: R@20 {train_r20 - test_r20:+.3f}, MRR {train_mrr - test_mrr:+.3f}")
-print(f"Loss: {best_loss:.4f}")
-print(f"Training time: {train_time:.0f}s")
+print(f"\nT1 Association vs Similarity:")
+print(f"  Train R@20: {train_r20:.3f}  MRR: {train_mrr:.3f}")
+print(f"  Test  R@20: {test_r20:.3f}  MRR: {test_mrr:.3f}")
+print(f"  Gap:  R@20 {train_r20 - test_r20:+.3f}  MRR {train_mrr - test_mrr:+.3f}")
+
+print(f"\nT2 Transitive (cross-room R@20):")
+for label in ['pure_test', 'train_to_test']:
+    if label in t2_split:
+        r = t2_split[label]
+        print(f"  {label}:")
+        print(f"    1-hop: {r[20]['pred_1hop']:.3f}  2-hop: {r[20]['pred_2hop']:.3f}  "
+              f"3-hop: {r[20]['pred_3hop']:.3f}  cosine: {r[20]['cosine']:.3f}")
+
+print(f"\nLoss: {best_loss:.4f}  Time: {train_time:.0f}s")
 
 # Save
-output_dir = Path("results") / "exp_d2_4layer_200k"
+output_dir = Path("results") / "d2_split_t2"
 output_dir.mkdir(parents=True, exist_ok=True)
 with open(output_dir / "results.json", 'w') as f:
     json.dump({
         'split': '70/30 edge-disjoint',
-        'test': {
-            'T1_R@20': test_r20, 'T1_MRR': test_mrr,
-            'T2_cross_room_R@20': test_t2_cross,
-            'T1_details': t1_test.details,
-            'T2_details': t2_test.details,
-        },
-        'train': {
-            'T1_R@20': train_r20, 'T1_MRR': train_mrr,
-            'T1_details': t1_train.details,
-        },
-        'generalization_gap': {
-            'R@20': train_r20 - test_r20,
-            'MRR': train_mrr - test_mrr,
-        },
-        'loss': float(best_loss), 'time': float(train_time),
-        'parameters': pred.count_parameters(),
+        'T1_test': {'R@20': test_r20, 'MRR': test_mrr, 'details': t1_test.details},
+        'T1_train': {'R@20': train_r20, 'MRR': train_mrr, 'details': t1_train.details},
+        'T2_split': t2_split,
+        'loss': float(best_loss),
+        'time': float(train_time),
         'train_associations': len(train_assoc),
         'test_associations': len(test_assoc),
     }, f, indent=2, default=str)
