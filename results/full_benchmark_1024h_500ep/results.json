@@ -1,0 +1,194 @@
+{
+  "name": "full_benchmark_1024h_500ep",
+  "config": {
+    "epochs": 500,
+    "hidden_dim": 1024,
+    "num_trajectories": 500,
+    "num_states": 50000,
+    "batch_size": 512,
+    "lr_start": 0.0005,
+    "lr_end": 1e-05,
+    "temp_start": 0.15,
+    "temp_end": 0.05
+  },
+  "training": {
+    "best_loss": 0.2867595613839067,
+    "training_time_sec": 159.8938431739807,
+    "epochs_per_min": 187.6244851239016,
+    "parameters": 1313152
+  },
+  "results": {
+    "association_vs_similarity": {
+      "predictor_score": 0.21770370370370368,
+      "cosine_baseline_score": 0.0,
+      "bilinear_baseline_score": 0.0,
+      "details": {
+        "recall_at_k": {
+          "5": {
+            "predictor": 0.23483333333333334,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "10": {
+            "predictor": 0.2060661375661376,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "20": {
+            "predictor": 0.21770370370370368,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "50": {
+            "predictor": 0.23106878306878306,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          }
+        },
+        "mrr": {
+          "predictor": 0.5301742656373533,
+          "cosine": 0.0002002957653355389,
+          "bilinear": 0.0002346994635100542
+        }
+      }
+    },
+    "transitive_association": {
+      "predictor_score": 0.185,
+      "cosine_baseline_score": 0.0,
+      "bilinear_baseline_score": 0.0,
+      "details": {
+        "cross_room": {
+          "10": {
+            "pred_1hop": 0.245,
+            "pred_2hop": 0.155,
+            "pred_3hop": 0.1,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "20": {
+            "pred_1hop": 0.245,
+            "pred_2hop": 0.185,
+            "pred_3hop": 0.145,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          },
+          "50": {
+            "pred_1hop": 0.255,
+            "pred_2hop": 0.205,
+            "pred_3hop": 0.175,
+            "cosine": 0.0,
+            "bilinear": 0.0
+          }
+        },
+        "same_room": {
+          "10": {
+            "pred_1hop": 0.255,
+            "pred_2hop": 0.185,
+            "pred_3hop": 0.125,
+            "cosine": 0.14,
+            "bilinear": 0.065
+          },
+          "20": {
+            "pred_1hop": 0.29,
+            "pred_2hop": 0.245,
+            "pred_3hop": 0.17,
+            "cosine": 0.18,
+            "bilinear": 0.105
+          },
+          "50": {
+            "pred_1hop": 0.32,
+            "pred_2hop": 0.29,
+            "pred_3hop": 0.23,
+            "cosine": 0.255,
+            "bilinear": 0.14
+          }
+        }
+      }
+    },
+    "decay_ablation": {
+      "predictor_score": 0.4759259259259259,
+      "cosine_baseline_score": 0.24259259259259258,
+      "bilinear_baseline_score": 0.0,
+      "details": {
+        "steps": [
+          50,
+          100,
+          150,
+          200,
+          250,
+          300,
+          350,
+          400,
+          450
+        ],
+        "with_decay": [
+          0.4666666666666666,
+          0.5333333333333333,
+          0.3499999999999999,
+          0.3833333333333333,
+          0.55,
+          0.4833333333333333,
+          0.55,
+          0.5166666666666666,
+          0.45
+        ],
+        "without_decay": [
+          0.2833333333333333,
+          0.25,
+          0.2333333333333333,
+          0.21666666666666665,
+          0.2833333333333333,
+          0.18333333333333332,
+          0.2833333333333333,
+          0.21666666666666665,
+          0.2333333333333333
+        ]
+      }
+    },
+    "creative_bridging": {
+      "predictor_score": 0.00519047619047619,
+      "cosine_baseline_score": 0.0033333333333333335,
+      "bilinear_baseline_score": 0.0033333333333333335,
+      "details": {
+        "recall_at_k": {
+          "20": {
+            "pred_spreading": 0.003095238095238095,
+            "pred_serial": 0.0004761904761904762,
+            "cosine": 0.0,
+            "bilinear": 0.0033333333333333335
+          },
+          "50": {
+            "pred_spreading": 0.00519047619047619,
+            "pred_serial": 0.0004761904761904762,
+            "cosine": 0.0033333333333333335,
+            "bilinear": 0.0033333333333333335
+          },
+          "100": {
+            "pred_spreading": 0.011888888888888888,
+            "pred_serial": 0.0025396825396825392,
+            "cosine": 0.016666666666666666,
+            "bilinear": 0.006666666666666667
+          }
+        },
+        "diagnostics": {
+          "convergence_pct": 100.0,
+          "fanout_k": 50
+        }
+      }
+    },
+    "familiarity_normalisation": {
+      "predictor_score": 0.0,
+      "cosine_baseline_score": 0.0,
+      "bilinear_baseline_score": 0.0,
+      "details": {
+        "novel_raw_rank": 32213.7,
+        "novel_weighted_rank": 32023.5,
+        "familiar_raw_rank": 9266.9,
+        "familiar_weighted_rank": 9559.9,
+        "mean_novel_novelty": 4.4217451761927835,
+        "mean_familiar_novelty": 4.088383932026597,
+        "ema_alpha": 0.05
+      }
+    }
+  }
+}

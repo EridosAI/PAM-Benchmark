@@ -1,0 +1,54 @@
+{
+  "name": "exp1_2000epochs",
+  "config": {
+    "epochs": 2000,
+    "hidden_dim": 512,
+    "num_trajectories": 500,
+    "num_states": 50000,
+    "batch_size": 512,
+    "lr_start": 0.0005,
+    "lr_end": 1e-05,
+    "temp_start": 0.15,
+    "temp_end": 0.05
+  },
+  "training": {
+    "best_loss": 1.3521554415323296,
+    "training_time_sec": 599.245687007904,
+    "epochs_per_min": 200.25175416642955,
+    "parameters": 394624
+  },
+  "results": {
+    "test1_r20_predictor": 0.10704497354497354,
+    "test1_r20_cosine": 0.0,
+    "test1_r20_bilinear": 0.0,
+    "details": {
+      "recall_at_k": {
+        "5": {
+          "predictor": 0.07272222222222223,
+          "cosine": 0.0,
+          "bilinear": 0.0
+        },
+        "10": {
+          "predictor": 0.08404761904761904,
+          "cosine": 0.0,
+          "bilinear": 0.0
+        },
+        "20": {
+          "predictor": 0.10704497354497354,
+          "cosine": 0.0,
+          "bilinear": 0.0
+        },
+        "50": {
+          "predictor": 0.13828571428571426,
+          "cosine": 0.0,
+          "bilinear": 0.0
+        }
+      },
+      "mrr": {
+        "predictor": 0.20547718543797974,
+        "cosine": 0.0002002957653355389,
+        "bilinear": 0.0002346994635100542
+      }
+    }
+  }
+}

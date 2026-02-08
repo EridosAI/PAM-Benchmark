@@ -1,0 +1,85 @@
+{
+  "T1_R@20": 0.39595767195767195,
+  "T1_MRR": 0.6346276610389644,
+  "T2_cross_room_R@20": 0.355,
+  "loss": 0.4084969471635111,
+  "time": 349.4479064941406,
+  "parameters": 2362752,
+  "T1_details": {
+    "recall_at_k": {
+      "5": {
+        "predictor": 0.3924444444444445,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "10": {
+        "predictor": 0.3776481481481482,
+        "cosine": 0.0,
+        "bilinear": 0.0006666666666666668
+      },
+      "20": {
+        "predictor": 0.39595767195767195,
+        "cosine": 0.0,
+        "bilinear": 0.0006666666666666668
+      },
+      "50": {
+        "predictor": 0.41300132275132273,
+        "cosine": 0.0,
+        "bilinear": 0.0006666666666666668
+      }
+    },
+    "mrr": {
+      "predictor": 0.6346276610389644,
+      "cosine": 0.0002002957653355389,
+      "bilinear": 0.0006585465522514452
+    }
+  },
+  "T2_details": {
+    "cross_room": {
+      "10": {
+        "pred_1hop": 0.43,
+        "pred_2hop": 0.295,
+        "pred_3hop": 0.25,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "20": {
+        "pred_1hop": 0.455,
+        "pred_2hop": 0.355,
+        "pred_3hop": 0.28,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      },
+      "50": {
+        "pred_1hop": 0.47,
+        "pred_2hop": 0.4,
+        "pred_3hop": 0.365,
+        "cosine": 0.0,
+        "bilinear": 0.0
+      }
+    },
+    "same_room": {
+      "10": {
+        "pred_1hop": 0.38,
+        "pred_2hop": 0.325,
+        "pred_3hop": 0.235,
+        "cosine": 0.065,
+        "bilinear": 0.035
+      },
+      "20": {
+        "pred_1hop": 0.435,
+        "pred_2hop": 0.355,
+        "pred_3hop": 0.31,
+        "cosine": 0.145,
+        "bilinear": 0.05
+      },
+      "50": {
+        "pred_1hop": 0.48,
+        "pred_2hop": 0.44,
+        "pred_3hop": 0.4,
+        "cosine": 0.255,
+        "bilinear": 0.11
+      }
+    }
+  }
+}
