@@ -1,0 +1,48 @@
+This is BibTeX, Version 0.99e
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: pam_paper.aux
+Reallocating 'name_of_file' (item size: 1) to 9 items.
+The style file: abbrvnat.bst
+Reallocating 'name_of_file' (item size: 1) to 15 items.
+Database file #1: pam_references.bib
+You've used 42 entries,
+            2773 wiz_defined-function locations,
+            845 strings with 13476 characters,
+and the built_in function-call counts, 23736 in all, are:
+= -- 2010
+> -- 1795
+< -- 22
++ -- 605
+- -- 563
+* -- 2080
+:= -- 3722
+add.period$ -- 148
+call.type$ -- 42
+change.case$ -- 310
+chr.to.int$ -- 42
+cite$ -- 84
+duplicate$ -- 946
+empty$ -- 1699
+format.name$ -- 619
+if$ -- 4879
+int.to.chr$ -- 1
+int.to.str$ -- 1
+missing$ -- 43
+newline$ -- 239
+num.names$ -- 170
+pop$ -- 629
+preamble$ -- 1
+purify$ -- 269
+quote$ -- 0
+skip$ -- 762
+stack$ -- 0
+substring$ -- 737
+swap$ -- 98
+text.length$ -- 5
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 457
+warning$ -- 0
+while$ -- 179
+width$ -- 0
+write$ -- 579
