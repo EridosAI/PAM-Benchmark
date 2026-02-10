@@ -1,3 +1,6 @@
+# Paper (kept locally, not tracked)
+paper/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
