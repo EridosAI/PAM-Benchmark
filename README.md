@@ -2,6 +2,8 @@
 
 **Predictive Associative Memory Benchmark** -- a benchmark for evaluating whether learned predictors can faithfully recall *associatively linked* memories (temporal co-occurrence) rather than merely *similar* ones (cosine proximity).
 
+DOI: 10.5281/zenodo.18595537. 
+
 ## Abstract
 
 Standard embedding-based retrieval finds what *looks like* the query. But biological memory retrieves what *happened with* the query -- states linked by temporal co-occurrence across distinct contexts. This benchmark tests whether a learned predictor (MLP trained with contrastive learning) can bridge that gap.
